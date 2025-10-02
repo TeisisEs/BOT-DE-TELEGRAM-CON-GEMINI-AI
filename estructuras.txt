@@ -1,0 +1,14 @@
+telegram_bot_kodigo/
+├── .env.example           # Secretos (NO subir a tu GitHub)
+├── .gitignore             # Qué ignorar en GitHub
+├── bot.py                 #  Archivo principal
+├── config.py              #  Configuraciones
+├── requirements.txt       #  Lista de dependencias
+├── README.md             #  Documentación
+├── handlers/             #  Manejadores del bot
+│   ├── __init__.py
+│   ├── commands.py       # Comandos como /start, /help
+│   └── messages.py       # Respuestas a mensajes normales
+└── utils/                #  Utilidades
+    ├── __init__.py
+    └── gemini_client.py  # Cliente de Gemini AI
