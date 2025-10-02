@@ -18,7 +18,7 @@ class GeminiClient:
         try:
             # Crear instancia de ChatGoogleGenerativeAI con LangChain
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-pro",
+                model="gemini-2.5-flash",  # Modelo Gemini
                 google_api_key=GEMINI_API_KEY,
                 temperature=0.7,  # Creatividad (0 = conservador, 1 = muy creativo)
                 convert_system_message_to_human=True  # Compatibilidad con Gemini
