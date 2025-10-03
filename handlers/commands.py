@@ -33,10 +33,8 @@ Soy un asistente potenciado por **Google Gemini AI** que puede ayudarte con:
     logger.info(f"Usuario {user_name} inició el bot")
 
 
+#--------------------------------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Comando /help - Lista de comandos disponibles
-    """
     help_text = """
 📋 **COMANDOS DISPONIBLES:**
 
@@ -45,31 +43,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔹 /help - Ver esta ayuda
 🔹 /fecha - Fecha y hora actual
 🔹 /clima [ciudad] - Clima de una ciudad
-🔹 /chiste [categoría] - Chiste con IA 
+🔹 /chiste [categoría] - Chiste con IA
+🔹 /reset - Reiniciar conversación
    _Ejemplos:_
    • `/clima San Salvador`
-   • `/clima Madrid`
-   • `/clima Tokyo`
    • `/chiste programacion`
-   • `/chiste ciencia`
-   
 
 **Conversaciones con IA:**
-💬 Simplemente escribe cualquier pregunta o mensaje y te responderé usando Gemini AI
+💬 Simplemente escribe cualquier pregunta y te responderé usando Gemini AI
 
-**Ejemplos de preguntas:**
-- ¿Qué es la inteligencia artificial?
-- Explícame sobre Python
-- Dame consejos para programar mejor
-- Cuéntame un chiste
-- ¿Cómo funciona el clima?
+El bot ahora **recuerda** nuestra conversación anterior (hasta 30 minutos).
+Usa /reset si quieres empezar de cero.
 
-⚡ **Powered by Google Gemini AI & WeatherAPI**
+⚡ **Powered by Google Gemini AI & OpenWeatherMap**
     """
     
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-
+#__________________________________________________________________________
 async def fecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Comando /fecha - Muestra fecha y hora actual
@@ -144,7 +135,42 @@ async def clima_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
 #__________________________________________________________________
+
 from utils.gemini_client import gemini_client
+
+async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Comando /reset - Limpia el historial de conversación y muestra info útil
+    """
+    from utils.conversation_manager import conversation_manager
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    # Limpiar historial
+    conversation_manager.clear_history(user_id)
+    
+    reset_message = f"""
+🔄 **Conversación reiniciada**
+
+¡Hola de nuevo, {user_name}! 👋
+
+He limpiado nuestro historial de conversación.
+Ahora empezamos desde cero con memoria fresca.
+
+📋 **Comandos rápidos:**
+• /help - Ver ayuda completa
+• /fecha - Fecha y hora actual
+• /clima [ciudad] - Consultar clima
+• /chiste [categoría] - Generar chiste
+
+💬 **¿En qué puedo ayudarte ahora?**
+Puedes preguntarme cualquier cosa o usar algún comando.
+    """
+    
+    await update.message.reply_text(reset_message, parse_mode='Markdown')
+    logger.info(f"Historial reiniciado para usuario {user_name} ({user_id})")
+
 
 async def chiste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -155,7 +181,7 @@ async def chiste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     - programacion
     - ciencia
     - general
-    - papá (dad jokes)
+    - papa (dad jokes)
     """
     chat_id = update.effective_chat.id
     
@@ -175,30 +201,46 @@ async def chiste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"🎭 Generando chiste de categoría: {categoria}")
         
+        # Agregar timestamp para forzar respuestas diferentes
+        import time
+        timestamp = int(time.time())
+        
         # Crear prompt específico para generar chistes
-        if categoria.lower() == "programacion":
-            prompt = """
-            Genera un chiste corto y gracioso sobre programación o desarrollo de software.
-            Debe ser apropiado, ingenioso y que los programadores puedan apreciar.
-            Incluye un emoji relevante al inicio.
+        categoria_lower = categoria.lower()
+        
+        if categoria_lower == "programacion":
+            prompt = f"""
+            Genera UN SOLO chiste original y gracioso sobre programación o desarrollo de software.
+            Debe ser diferente, ingenioso y que los programadores disfruten.
+            IMPORTANTE: Sé creativo, evita chistes comunes o repetitivos.
+            Formato: Solo el chiste con un emoji al inicio. Nada más.
+            ID único: {timestamp}
             """
-        elif categoria.lower() == "ciencia":
-            prompt = """
-            Genera un chiste corto y gracioso sobre ciencia (física, química, matemáticas, etc.).
-            Debe ser inteligente y educativo pero divertido.
-            Incluye un emoji relevante al inicio.
+        elif categoria_lower == "ciencia":
+            prompt = f"""
+            Genera UN SOLO chiste original sobre ciencia (física, química, biología, matemáticas).
+            Debe ser inteligente, educativo y gracioso.
+            IMPORTANTE: Crea algo único, no uses chistes conocidos.
+            Formato: Solo el chiste con un emoji al inicio. Nada más.
+            ID único: {timestamp}
             """
-        elif categoria.lower() == "papa" or categoria.lower() == "papá":
-            prompt = """
-            Genera un "dad joke" (chiste de papá) en español.
-            Debe ser un juego de palabras simple y predecible pero gracioso.
-            Incluye un emoji relevante al inicio.
+        elif categoria_lower in ["papa", "papá"]:
+            prompt = f"""
+            Genera UN SOLO "dad joke" (chiste de papá) original en español.
+            Debe ser un juego de palabras simple, predecible pero gracioso.
+            IMPORTANTE: Inventa uno nuevo, no repitas chistes clásicos.
+            Formato: Solo el chiste con un emoji al inicio. Nada más.
+            ID único: {timestamp}
             """
         else:
-            prompt = """
-            Genera un chiste corto, limpio y gracioso en español.
-            Debe ser apropiado para todas las edades y hacer reír.
-            Incluye un emoji relevante al inicio.
+            # Para cualquier otra categoría (incluyendo perros, gatos, etc.)
+            prompt = f"""
+            Genera UN SOLO chiste corto, original y gracioso sobre: {categoria}
+            Debe ser apropiado, divertido y relacionado específicamente con "{categoria}".
+            IMPORTANTE: Sé muy creativo. Evita chistes genéricos como el del semáforo.
+            Crea algo único basado en la temática solicitada.
+            Formato: Solo el chiste con un emoji al inicio. Nada más.
+            ID único: {timestamp}
             """
         
         # Obtener chiste de Gemini
