@@ -12,7 +12,10 @@ from handlers.commands import (
     fecha_command, 
     clima_command, 
     chiste_command,
-    reset_command
+    reset_command,
+    convertir_command,
+    traducir_command,
+    letra_command
 )
 from handlers.messages import (
     handle_message, 
@@ -27,8 +30,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.StreamHandler(),  # Consola
-        logging.FileHandler('bot.log', encoding='utf-8')  # Archivo
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -62,9 +65,9 @@ def main():
     """
     Función principal que inicia el bot con configuración mejorada
     """
-    print("\n" + "="*50)
-    print("🚀 INICIANDO BOT DE TELEGRAM")
-    print("="*50)
+    print("\n" + "="*60)
+    print("🚀 INICIANDO BOT DE TELEGRAM CON LANGCHAIN AGENT")
+    print("="*60)
     
     print("\n📋 Cargando módulos...")
     print("   ✅ Configuración cargada")
@@ -72,18 +75,35 @@ def main():
     print("   ✅ Weather API conectada")
     print("   ✅ Sistema de memoria conversacional activo")
     
+    print("\n🔧 Cargando LangChain Tools...")
+    print("      • 💱 CurrencyConverter")
+    print("      • 🌐 TextTranslator")
+    print("      • 🎵 LyricsFinder")
+    
+    print("\n🤖 Inicializando LangChain Agent...")
+    print("      • AgentType: CONVERSATIONAL_REACT_DESCRIPTION")
+    print("      • Memory: ConversationBufferMemory")
+    print("      • Tools: 3 herramientas especializadas")
+    print("      ✅ Agente listo para decisiones automáticas")
+    
     # Crear aplicación
     print("\n🔧 Configurando bot...")
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Registrar comandos
-    print("📝 Registrando comandos...")
+    # Registrar comandos básicos
+    print("📝 Registrando comandos básicos...")
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("fecha", fecha_command))
     application.add_handler(CommandHandler("clima", clima_command))
     application.add_handler(CommandHandler("chiste", chiste_command))
     application.add_handler(CommandHandler("reset", reset_command))
+    
+    # Registrar comandos con Tools
+    print("🆕 Registrando comandos con LangChain Tools...")
+    application.add_handler(CommandHandler("convertir", convertir_command))
+    application.add_handler(CommandHandler("traducir", traducir_command))
+    application.add_handler(CommandHandler("letra", letra_command))
     
     # Registrar manejadores de mensajes
     print("💬 Registrando handlers de mensajes...")
@@ -97,31 +117,52 @@ def main():
     application.add_error_handler(error_handler)
     
     # Mensaje de inicio
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("✅ BOT INICIADO CORRECTAMENTE")
-    print("="*50)
+    print("="*60)
+    
     print("\n🤖 Funcionalidades activas:")
     print("   • Conversaciones con contexto e historial")
+    print("   • 🆕 Agente LangChain inteligente")
+    print("   • Decisión automática de herramientas")
     print("   • Respuestas no repetitivas")
-    print("   • Manejo inteligente de errores")
     print("   • Sistema de memoria por usuario")
+    
     print("\n📋 Comandos disponibles:")
-    print("   /start    - Mensaje de bienvenida")
-    print("   /help     - Ver ayuda completa")
-    print("   /fecha    - Fecha y hora actual")
-    print("   /clima    - Consultar clima")
-    print("   /chiste   - Generar chiste con IA")
-    print("   /reset    - Reiniciar conversación")
-    print("\n💡 Mejoras implementadas:")
+    print("   /start       - Mensaje de bienvenida")
+    print("   /help        - Ver ayuda completa")
+    print("   /fecha       - Fecha y hora actual")
+    print("   /clima       - Consultar clima")
+    print("   /chiste      - Generar chiste con IA")
+    print("   /reset       - Reiniciar conversación")
+    
+    print("\n🆕 Comandos con LangChain Tools:")
+    print("   /convertir   - 💱 Convertir monedas")
+    print("   /traducir    - 🌐 Traducir textos")
+    print("   /letra       - 🎵 Buscar letras de canciones")
+    
+    print("\n🤖 Características del Agente:")
+    print("   ✓ Detecta automáticamente necesidad de tools")
+    print("   ✓ Decide qué herramienta usar")
+    print("   ✓ Conversación natural sin comandos")
+    print("   ✓ Ejemplos:")
+    print("     • 'convierte 100 dólares a euros'")
+    print("     • 'traduce hello world al español'")
+    print("     • 'letra de Bohemian Rhapsody'")
+    
+    print("\n💡 Tecnologías implementadas:")
+    print("   ✓ LangChain Framework")
+    print("   ✓ Google Gemini AI (gemini-2.0-flash-exp)")
+    print("   ✓ LangChain Tools (3 personalizadas)")
+    print("   ✓ LangChain Agent (CONVERSATIONAL_REACT)")
     print("   ✓ Memoria conversacional (30 min)")
-    print("   ✓ Contexto entre mensajes")
-    print("   ✓ Respuestas más naturales")
-    print("   ✓ Evita repeticiones")
-    print("   ✓ Mejor manejo de errores")
+    print("   ✓ Sistema de decisión inteligente")
+    
     print("\n👋 Abre Telegram y prueba tu bot")
+    print("💡 Prueba tanto comandos como preguntas naturales")
     print("ℹ️  Presiona Ctrl+C para detener\n")
     
-    logger.info("Bot iniciado y listo para recibir mensajes")
+    logger.info("Bot con LangChain Agent iniciado correctamente")
     
     # Iniciar polling
     application.run_polling(allowed_updates=Update.ALL_TYPES)

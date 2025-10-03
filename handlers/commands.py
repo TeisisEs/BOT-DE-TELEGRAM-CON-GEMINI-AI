@@ -4,6 +4,10 @@ from telegram.ext import ContextTypes
 from datetime import datetime
 import pytz
 from utils.weather_api import weather_api
+from utils.gemini_client import gemini_client
+
+# Importar las nuevas Tools
+from utils.tools import currency_converter, translator, lyrics_finder
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +26,12 @@ Soy un asistente potenciado por **Google Gemini AI** que puede ayudarte con:
 ✨ **Conversaciones inteligentes** - Pregúntame lo que quieras
 🌤️ **Información del clima** - /clima [ciudad]
 📅 **Fecha y hora actual** - /fecha
-💡 **Respuestas a tus dudas** - Cualquier tema
+💱 **Conversión de monedas** - /convertir [cantidad] [moneda1] [moneda2]
+🌍 **Traducción de textos** - /traducir [texto] [idioma]
+🎵 **Letras de canciones** - /letra [artista] - [canción]
+😂 **Chistes con IA** - /chiste
 
-📝 Escribe /help para ver todos mis comandos.
+📋 Escribe /help para ver todos mis comandos.
 
 💬 **¡Simplemente escribe tu pregunta y te responderé!**
     """
@@ -33,7 +40,6 @@ Soy un asistente potenciado por **Google Gemini AI** que puede ayudarte con:
     logger.info(f"Usuario {user_name} inició el bot")
 
 
-#--------------------------------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 📋 **COMANDOS DISPONIBLES:**
@@ -45,9 +51,22 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔹 /clima [ciudad] - Clima de una ciudad
 🔹 /chiste [categoría] - Chiste con IA
 🔹 /reset - Reiniciar conversación
+
+**🆕 Nuevas herramientas:**
+💱 /convertir [cantidad] [de] [a] - Convertir monedas
    _Ejemplos:_
-   • `/clima San Salvador`
-   • `/chiste programacion`
+   • `/convertir 100 USD EUR`
+   • `/convertir 50 MXN USD`
+
+🌍 /traducir [texto] - Traducir texto
+   _Ejemplos:_
+   • `/traducir hello world`
+   • `/traducir buenos días`
+
+🎵 /letra [artista] - [canción] - Buscar letra
+   _Ejemplos:_
+   • `/letra Bad Bunny - Tití Me Preguntó`
+   • `/letra The Beatles - Hey Jude`
 
 **Conversaciones con IA:**
 💬 Simplemente escribe cualquier pregunta y te responderé usando Gemini AI
@@ -55,12 +74,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 El bot ahora **recuerda** nuestra conversación anterior (hasta 30 minutos).
 Usa /reset si quieres empezar de cero.
 
-⚡ **Powered by Google Gemini AI & OpenWeatherMap**
+⚡ **Powered by Google Gemini AI, OpenWeatherMap & LangChain Tools**
     """
     
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-#__________________________________________________________________________
+
 async def fecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Comando /fecha - Muestra fecha y hora actual
@@ -82,7 +101,7 @@ async def fecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🗓️ {dia_semana}, {now.day} de {mes} de {now.year}
 🕐 Hora: {now.strftime('%I:%M:%S %p')}
-🌍 Zona horaria: El Salvador (GMT-6)
+🌎 Zona horaria: El Salvador (GMT-6)
 
 _Información actualizada en tiempo real_
     """
@@ -110,7 +129,7 @@ async def clima_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Obtener nombre de la ciudad (puede ser más de una palabra)
+    # Obtener nombre de la ciudad
     ciudad = " ".join(context.args)
     
     try:
@@ -133,14 +152,11 @@ async def clima_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ Ocurrió un error al obtener el clima. Por favor intenta de nuevo."
         )
-        
-#__________________________________________________________________
 
-from utils.gemini_client import gemini_client
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Comando /reset - Limpia el historial de conversación y muestra info útil
+    Comando /reset - Limpia el historial de conversación
     """
     from utils.conversation_manager import conversation_manager
     
@@ -162,10 +178,11 @@ Ahora empezamos desde cero con memoria fresca.
 • /help - Ver ayuda completa
 • /fecha - Fecha y hora actual
 • /clima [ciudad] - Consultar clima
-• /chiste [categoría] - Generar chiste
+• /convertir - Convertir monedas
+• /traducir - Traducir textos
+• /letra - Buscar letras
 
 💬 **¿En qué puedo ayudarte ahora?**
-Puedes preguntarme cualquier cosa o usar algún comando.
     """
     
     await update.message.reply_text(reset_message, parse_mode='Markdown')
@@ -175,96 +192,216 @@ Puedes preguntarme cualquier cosa o usar algún comando.
 async def chiste_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Comando /chiste - Genera chistes usando Gemini AI
-    Uso: /chiste [categoría opcional]
-    
-    Categorías disponibles:
-    - programacion
-    - ciencia
-    - general
-    - papa (dad jokes)
     """
     chat_id = update.effective_chat.id
-    
-    # Obtener categoría si se especificó
     categoria = " ".join(context.args) if context.args else "general"
     
-    # Verificar que el cliente de Gemini esté disponible
     if not gemini_client:
-        await update.message.reply_text(
-            "❌ Lo siento, el servicio de IA no está disponible."
-        )
+        await update.message.reply_text("❌ El servicio de IA no está disponible.")
         return
     
     try:
-        # Mostrar indicador de "escribiendo..."
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         
-        logger.info(f"🎭 Generando chiste de categoría: {categoria}")
-        
-        # Agregar timestamp para forzar respuestas diferentes
         import time
         timestamp = int(time.time())
         
-        # Crear prompt específico para generar chistes
-        categoria_lower = categoria.lower()
+        prompt = f"""
+        Genera UN SOLO chiste corto y original sobre: {categoria}
+        Debe ser apropiado, divertido y creativo.
+        Formato: Solo el chiste con un emoji al inicio.
+        ID único: {timestamp}
+        """
         
-        if categoria_lower == "programacion":
-            prompt = f"""
-            Genera UN SOLO chiste original y gracioso sobre programación o desarrollo de software.
-            Debe ser diferente, ingenioso y que los programadores disfruten.
-            IMPORTANTE: Sé creativo, evita chistes comunes o repetitivos.
-            Formato: Solo el chiste con un emoji al inicio. Nada más.
-            ID único: {timestamp}
-            """
-        elif categoria_lower == "ciencia":
-            prompt = f"""
-            Genera UN SOLO chiste original sobre ciencia (física, química, biología, matemáticas).
-            Debe ser inteligente, educativo y gracioso.
-            IMPORTANTE: Crea algo único, no uses chistes conocidos.
-            Formato: Solo el chiste con un emoji al inicio. Nada más.
-            ID único: {timestamp}
-            """
-        elif categoria_lower in ["papa", "papá"]:
-            prompt = f"""
-            Genera UN SOLO "dad joke" (chiste de papá) original en español.
-            Debe ser un juego de palabras simple, predecible pero gracioso.
-            IMPORTANTE: Inventa uno nuevo, no repitas chistes clásicos.
-            Formato: Solo el chiste con un emoji al inicio. Nada más.
-            ID único: {timestamp}
-            """
-        else:
-            # Para cualquier otra categoría (incluyendo perros, gatos, etc.)
-            prompt = f"""
-            Genera UN SOLO chiste corto, original y gracioso sobre: {categoria}
-            Debe ser apropiado, divertido y relacionado específicamente con "{categoria}".
-            IMPORTANTE: Sé muy creativo. Evita chistes genéricos como el del semáforo.
-            Crea algo único basado en la temática solicitada.
-            Formato: Solo el chiste con un emoji al inicio. Nada más.
-            ID único: {timestamp}
-            """
-        
-        # Obtener chiste de Gemini
         chiste = gemini_client.get_simple_response(prompt)
         
-        # Formatear respuesta
         respuesta = f"""
 🎭 **CHISTE DE {categoria.upper()}**
 
 {chiste}
 
 ---
-💡 _Prueba otras categorías:_
-• `/chiste programacion`
-• `/chiste ciencia`
-• `/chiste papa`
-• `/chiste` (general)
+💡 _Prueba: /chiste programacion, /chiste ciencia_
         """
         
         await update.message.reply_text(respuesta, parse_mode='Markdown')
         logger.info(f"✅ Chiste enviado (categoría: {categoria})")
         
     except Exception as e:
-        logger.error(f"❌ Error en comando /chiste: {e}")
+        logger.error(f"❌ Error en /chiste: {e}")
+        await update.message.reply_text("❌ Error al generar chiste.")
+
+
+# ============================================
+# 🆕 NUEVOS COMANDOS CON LANGCHAIN TOOLS
+# ============================================
+
+async def convertir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Comando /convertir - Convierte monedas usando CurrencyTool
+    Uso: /convertir [cantidad] [moneda_origen] [moneda_destino]
+    Ejemplos: /convertir 100 USD EUR
+    """
+    chat_id = update.effective_chat.id
+    
+    # Verificar argumentos
+    if len(context.args) < 3:
         await update.message.reply_text(
-            "❌ Ocurrió un error al generar el chiste. Por favor intenta de nuevo."
+            "❌ Formato incorrecto.\n\n"
+            "**Uso correcto:**\n"
+            "`/convertir [cantidad] [de] [a]`\n\n"
+            "**Ejemplos:**\n"
+            "• `/convertir 100 USD EUR`\n"
+            "• `/convertir 50 MXN USD`\n"
+            "• `/convertir 1000 JPY GBP`\n\n"
+            "💡 Usa códigos de moneda: USD, EUR, GBP, JPY, MXN, CAD, etc.",
+            parse_mode='Markdown'
         )
+        return
+    
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        # Extraer parámetros
+        cantidad = float(context.args[0])
+        moneda_origen = context.args[1].upper()
+        moneda_destino = context.args[2].upper()
+        
+        logger.info(f"💱 Convirtiendo {cantidad} {moneda_origen} → {moneda_destino}")
+        
+        # Usar CurrencyConverter
+        result = currency_converter.convert(cantidad, moneda_origen, moneda_destino)
+        message = currency_converter.format_result(result)
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        logger.info(f"✅ Conversión enviada")
+        
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Cantidad inválida. Debe ser un número.\n"
+            "Ejemplo: `/convertir 100 USD EUR`",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"❌ Error en /convertir: {e}")
+        await update.message.reply_text("❌ Error al convertir monedas.")
+
+
+async def traducir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Comando /traducir - Traduce texto usando TranslatorTool
+    Uso: /traducir [texto]
+    Detecta automáticamente el idioma y traduce (inglés ↔ español por defecto)
+    """
+    chat_id = update.effective_chat.id
+    
+    # Verificar que hay texto
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Por favor proporciona un texto para traducir.\n\n"
+            "**Uso correcto:**\n"
+            "`/traducir hello world`\n"
+            "`/traducir buenos días`\n"
+            "`/traducir how are you doing`\n\n"
+            "💡 El bot detecta el idioma automáticamente:\n"
+            "• Inglés → Español\n"
+            "• Español → Inglés",
+            parse_mode='Markdown'
+        )
+        return
+    
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        # Obtener texto completo
+        texto = " ".join(context.args)
+        
+        logger.info(f"🌍 Traduciendo: {texto[:50]}...")
+        
+        # Detectar idioma básico y traducir
+        # Si tiene caracteres latinos/español, traducir a inglés
+        # Si es inglés, traducir a español
+        tiene_espanol = any(c in texto.lower() for c in ['á', 'é', 'í', 'ó', 'ú', 'ñ', '¿', '¡'])
+        palabras_espanol = ['hola', 'buenos', 'días', 'cómo', 'qué', 'gracias', 'por', 'favor']
+        es_espanol = tiene_espanol or any(palabra in texto.lower() for palabra in palabras_espanol)
+        
+        target_lang = 'en' if es_espanol else 'es'
+        
+        # Usar Translator
+        result = translator.translate(texto, 'auto', target_lang)
+        message = translator.format_result(result)
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        logger.info(f"✅ Traducción enviada")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en /traducir: {e}")
+        await update.message.reply_text("❌ Error al traducir texto.")
+
+
+async def letra_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Comando /letra - Busca letra de canción usando LyricsTool
+    Uso: /letra [Artista] - [Canción]
+    Ejemplos: /letra Bad Bunny - Tití Me Preguntó
+    """
+    chat_id = update.effective_chat.id
+    
+    # Verificar que hay query
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Por favor especifica artista y canción.\n\n"
+            "**Uso correcto:**\n"
+            "`/letra [Artista] - [Canción]`\n\n"
+            "**Ejemplos:**\n"
+            "• `/letra Bad Bunny - Tití Me Preguntó`\n"
+            "• `/letra The Beatles - Hey Jude`\n"
+            "• `/letra Shakira - Waka Waka`\n"
+            "• `/letra Queen - Bohemian Rhapsody`\n\n"
+            "💡 Usa el guion ( - ) para separar artista y canción",
+            parse_mode='Markdown'
+        )
+        return
+    
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        # Obtener query completa
+        query = " ".join(context.args)
+        
+        logger.info(f"🎵 Buscando letra: {query}")
+        
+        # Parsear artista y canción
+        if ' - ' not in query:
+            await update.message.reply_text(
+                "❌ Formato incorrecto. Usa: `/letra Artista - Canción`\n"
+                "Ejemplo: `/letra The Beatles - Hey Jude`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        parts = query.split(' - ')
+        artista = parts[0].strip()
+        cancion = parts[1].strip()
+        
+        # Usar LyricsFinder
+        result = lyrics_finder.search_lyrics(artista, cancion)
+        
+        # Formatear resultado (limitar a 30 líneas para Telegram)
+        message = lyrics_finder.format_result(result, max_lines=25)
+        
+        # Si el mensaje es muy largo, dividirlo
+        if len(message) > 4000:
+            # Enviar en partes
+            parts = [message[i:i+3800] for i in range(0, len(message), 3800)]
+            for part in parts:
+                await update.message.reply_text(part, parse_mode='Markdown')
+                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        else:
+            await update.message.reply_text(message, parse_mode='Markdown')
+        
+        logger.info(f"✅ Letra enviada: {artista} - {cancion}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en /letra: {e}")
+        await update.message.reply_text("❌ Error al buscar letra de canción.")
