@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from config import TELEGRAM_TOKEN
 
 # Importar handlers
-from handlers.commands import start_command, help_command, fecha_command, clima_command
+from handlers.commands import start_command, help_command, fecha_command, clima_command, chiste_command
 from handlers.messages import handle_message, handle_voice, handle_photo
 
 # Configurar logging
@@ -53,6 +53,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("fecha", fecha_command))
     application.add_handler(CommandHandler("clima", clima_command))
+    application.add_handler(CommandHandler("chiste", chiste_command))
     
     # Registrar manejadores de mensajes
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
