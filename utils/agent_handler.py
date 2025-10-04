@@ -1,6 +1,6 @@
 """
-LangChain Agent Handler - VERSIÓN MEJORADA
-===========================================
+LangChain Agent Handler - VERSIÓN MEJORADA Y ROBUSTA
+====================================================
 Agente inteligente que decide automáticamente qué tool usar
 """
 
@@ -8,7 +8,6 @@ import logging
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
-from langchain import hub
 
 from config import GEMINI_API_KEY
 from utils.tools import all_tools
@@ -26,36 +25,46 @@ class IntelligentAgent:
         Inicializa el agente con Gemini AI y todas las tools
         """
         try:
-            # Modelo Gemini para el agente
+            # Modelo Gemini para el agente con configuración optimizada
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.0-flash-exp",
                 google_api_key=GEMINI_API_KEY,
-                temperature=0.7,
+                temperature=0.3,  # Más bajo para decisiones más consistentes
                 convert_system_message_to_human=True
             )
             
-            # Crear prompt personalizado más robusto
-            template = """Eres un asistente útil que tiene acceso a las siguientes herramientas:
+            # Prompt mejorado y más específico
+            template = """Eres un asistente útil que puede usar herramientas especializadas cuando sea necesario.
+
+Tienes acceso a las siguientes herramientas:
 
 {tools}
 
-Usa el siguiente formato:
+REGLAS IMPORTANTES:
+1. Si el usuario pide convertir monedas o menciona dinero/divisas, DEBES usar CurrencyConverter
+2. Si el usuario pide traducir o menciona idiomas, DEBES usar TextTranslator  
+3. Si el usuario pide letras de canciones o menciona artistas/música, DEBES usar LyricsFinder
+4. Si no necesitas herramientas, responde directamente
+5. SIEMPRE responde en español de forma clara
 
-Question: la pregunta que debes responder
-Thought: siempre debes pensar qué hacer
-Action: la acción a tomar, debe ser una de [{tool_names}]
-Action Input: la entrada para la acción
-Observation: el resultado de la acción
-... (este proceso Thought/Action/Action Input/Observation puede repetirse N veces)
-Thought: ahora sé la respuesta final
-Final Answer: la respuesta final a la pregunta original
+EJEMPLOS DE CUÁNDO USAR HERRAMIENTAS:
+- "convierte 100 dólares a euros" → Usa CurrencyConverter
+- "cuánto es 50 USD en MXN" → Usa CurrencyConverter
+- "traduce hello al español" → Usa TextTranslator
+- "cómo se dice good morning en español" → Usa TextTranslator
+- "letra de Bohemian Rhapsody" → Usa LyricsFinder
+- "busca la letra de Hey Jude" → Usa LyricsFinder
 
-IMPORTANTE:
-- Si la pregunta requiere convertir monedas, usa CurrencyConverter
-- Si requiere traducción, usa TextTranslator
-- Si requiere letra de canción, usa LyricsFinder
-- Responde en español de forma clara y amigable
-- Si no necesitas herramientas, responde directamente
+Usa EXACTAMENTE este formato:
+
+Question: la pregunta del usuario
+Thought: Pienso en qué hacer. ¿Necesito una herramienta? ¿Cuál?
+Action: [nombre de la herramienta: {tool_names}]
+Action Input: [entrada para la herramienta]
+Observation: [resultado de la herramienta]
+... (repite Thought/Action/Action Input/Observation si es necesario)
+Thought: Ya tengo la respuesta final
+Final Answer: [respuesta completa al usuario]
 
 Begin!
 
@@ -67,25 +76,25 @@ Thought:{agent_scratchpad}"""
                 template=template
             )
             
-            # Crear agente con create_react_agent
+            # Crear agente
             agent = create_react_agent(
                 llm=self.llm,
                 tools=all_tools,
                 prompt=prompt
             )
             
-            # Crear AgentExecutor con configuración optimizada
+            # Crear AgentExecutor con mejor configuración
             self.agent = AgentExecutor(
                 agent=agent,
                 tools=all_tools,
-                verbose=True,
+                verbose=True,  # Para debugging
                 handle_parsing_errors=True,
-                max_iterations=5,  # Aumentado para mayor flexibilidad
+                max_iterations=4,
                 early_stopping_method="generate",
-                return_intermediate_steps=False  # Para respuestas más limpias
+                return_intermediate_steps=False
             )
             
-            logger.info("✅ Agente LangChain inicializado correctamente con 3 tools")
+            logger.info("✅ Agente LangChain inicializado correctamente")
             
         except Exception as e:
             logger.error(f"❌ Error al inicializar agente: {e}")
@@ -95,15 +104,9 @@ Thought:{agent_scratchpad}"""
     def run(self, query: str) -> str:
         """
         Ejecuta el agente con una consulta
-        
-        Args:
-            query: Consulta del usuario
-            
-        Returns:
-            Respuesta del agente
         """
         try:
-            logger.info(f"🤖 Agente procesando: {query[:100]}")
+            logger.info(f"🤖 Agente procesando: {query}")
             
             # Ejecutar agente
             response = self.agent.invoke({"input": query})
@@ -114,17 +117,17 @@ Thought:{agent_scratchpad}"""
             else:
                 answer = str(response)
             
-            # Limpiar respuesta de artefactos del agente
+            # Limpiar respuesta
             answer = self._clean_response(answer)
             
-            logger.info(f"✅ Agente respondió: {answer[:100]}...")
+            logger.info(f"✅ Respuesta del agente: {answer[:100]}...")
             return answer
             
         except Exception as e:
-            logger.error(f"❌ Error en agente: {e}")
+            logger.error(f"❌ Error en agente: {e}", exc_info=True)
             return (
-                "Disculpa, tuve un problema al procesar tu solicitud. "
-                "¿Podrías reformular tu pregunta?"
+                "Disculpa, tuve un problema al procesar tu solicitud con las herramientas. "
+                "¿Podrías reformular tu pregunta o usar el comando directo?"
             )
     
     
@@ -132,52 +135,88 @@ Thought:{agent_scratchpad}"""
         """
         Limpia la respuesta del agente de artefactos internos
         """
-        # Remover posibles artefactos del proceso ReAct
-        artifacts = ["Thought:", "Action:", "Action Input:", "Observation:", "Final Answer:"]
+        # Remover artefactos del proceso ReAct
+        artifacts = [
+            "Thought:", "Action:", "Action Input:", "Observation:", 
+            "Final Answer:", "Question:"
+        ]
         
-        for artifact in artifacts:
-            if artifact in response:
-                # Tomar solo la parte después del último artifact
-                response = response.split(artifact)[-1].strip()
+        lines = response.split('\n')
+        cleaned_lines = []
         
-        return response
+        for line in lines:
+            # Saltar líneas que son solo artefactos
+            if any(line.strip().startswith(artifact) for artifact in artifacts):
+                # Si es "Final Answer:", tomar el contenido después
+                if line.strip().startswith("Final Answer:"):
+                    content = line.replace("Final Answer:", "").strip()
+                    if content:
+                        cleaned_lines.append(content)
+                continue
+            cleaned_lines.append(line)
+        
+        result = '\n'.join(cleaned_lines).strip()
+        
+        # Si quedó vacío, usar la respuesta original
+        return result if result else response
 
-
-# ==================================================
-# FUNCIÓN PARA DETECTAR SI USAR AGENTE O GEMINI
-# ==================================================
 
 def should_use_agent(query: str) -> bool:
     """
     Decide si usar el agente o respuesta simple de Gemini
-    
-    Args:
-        query: Consulta del usuario
-        
-    Returns:
-        True si debe usar el agente, False para respuesta simple
+    VERSIÓN MEJORADA con mejor detección
     """
     query_lower = query.lower()
     
-    # Palabras clave que indican uso de tools
-    agent_keywords = [
-        # Currency
-        'convertir', 'conversion', 'conversor', 'moneda', 'dolar', 'euro', 'peso',
-        'usd', 'eur', 'gbp', 'mxn', 'currency', 'convert', 'cuanto es', 'cuánto es',
-        'cambio', 'divisa', 'cotizacion', 'cotización',
+    # Palabras clave expandidas y más flexibles
+    agent_triggers = {
+        # Currency - EXPANDIDO
+        'currency': [
+            'convertir', 'conversion', 'conversor', 'convierte', 'cuanto',
+            'moneda', 'divisa', 'cambio', 'cotizacion', 'dolar', 'euro', 
+            'peso', 'libra', 'yen', 'usd', 'eur', 'gbp', 'mxn', 'jpy',
+            'currency', 'exchange', 'vale', 'equivale', 'dolares', 'euros'
+        ],
         
-        # Translator
-        'traducir', 'traducción', 'traductor', 'translate', 'translation',
-        'en ingles', 'en español', 'al ingles', 'al español', 'en frances',
-        'cómo se dice', 'como se dice', 'traduce', 'en inglés',
+        # Translation - EXPANDIDO  
+        'translation': [
+            'traducir', 'traductor', 'traduce', 'traduccion',
+            'translate', 'como se dice', 'que significa', 'en ingles',
+            'en español', 'al ingles', 'al español', 'en frances',
+            'en aleman', 'how to say', 'what does', 'mean in'
+        ],
         
-        # Lyrics
-        'letra', 'letras', 'cancion', 'canción', 'song', 'lyrics', 'lyric',
-        'musica', 'música', 'artista', 'banda', 'busca letra', 'quiero letra',
-        'tema de', 'tema musical'
+        # Lyrics - EXPANDIDO
+        'lyrics': [
+            'letra', 'letras', 'cancion', 'song', 'lyrics', 'musica',
+            'artista', 'tema', 'busca letra', 'encuentra letra',
+            'banda', 'cantante', 'interpreta', 'canta', 'album'
+        ]
+    }
+    
+    # Verificar si alguna categoría tiene coincidencias
+    for category, keywords in agent_triggers.items():
+        matches = sum(1 for keyword in keywords if keyword in query_lower)
+        if matches > 0:
+            logger.info(f"🎯 Detectado: {category} (matches: {matches})")
+            return True
+    
+    # Patrones adicionales (regex-like)
+    patterns = [
+        ('cuánto es', 'en'),  # "cuánto es X en Y"
+        ('cuanto vale', ''),
+        ('precio de', 'en'),
+        ('how much', 'in'),
+        ('what is', 'in'),
     ]
     
-    return any(keyword in query_lower for keyword in agent_keywords)
+    for pattern in patterns:
+        if all(p in query_lower for p in pattern if p):
+            logger.info(f"🎯 Detectado patrón: {pattern}")
+            return True
+    
+    logger.info("💭 No se detectó necesidad de tools - usando Gemini directo")
+    return False
 
 
 # Crear instancia global
@@ -190,27 +229,28 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    # Testing del agente
+    # Testing mejorado
     if intelligent_agent:
         print("=" * 60)
-        print("🧪 TESTING LANGCHAIN AGENT")
+        print("🧪 TESTING LANGCHAIN AGENT - VERSIÓN MEJORADA")
         print("=" * 60)
         
-        # Test 1: Currency conversion
-        print("\n📊 Test 1: Conversión de monedas")
-        response = intelligent_agent.run("convierte 100 dólares a euros")
-        print(f"Respuesta: {response}\n")
+        tests = [
+            "convierte 100 dólares a euros",
+            "cuánto es 50 USD en pesos mexicanos",
+            "traduce 'hello world' al español",
+            "cómo se dice 'buenos días' en inglés",
+            "letra de Hey Jude de The Beatles",
+        ]
         
-        # Test 2: Translation
-        print("📊 Test 2: Traducción")
-        response = intelligent_agent.run("traduce 'hello world' al español")
-        print(f"Respuesta: {response}\n")
+        for i, test_query in enumerate(tests, 1):
+            print(f"\n📊 Test {i}: {test_query}")
+            print(f"Usar agente: {should_use_agent(test_query)}")
+            try:
+                response = intelligent_agent.run(test_query)
+                print(f"Respuesta: {response[:200]}...")
+            except Exception as e:
+                print(f"Error: {e}")
+            print("-" * 60)
         
-        # Test 3: Lyrics (si la API responde)
-        print("📊 Test 3: Letra de canción")
-        response = intelligent_agent.run("letra de Hey Jude de The Beatles")
-        print(f"Respuesta: {response[:200]}...\n")
-        
-        print("=" * 60)
-        print("✅ Testing completado")
-        print("=" * 60)
+        print("\n✅ Testing completado")

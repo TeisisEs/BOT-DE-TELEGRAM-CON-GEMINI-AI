@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.gemini_client import gemini_client
 from utils.conversation_manager import conversation_manager
 
-# 🆕 IMPORTAR AGENTE LANGCHAIN
+# IMPORTAR AGENTE LANGCHAIN
 from utils.agent_handler import intelligent_agent, should_use_agent
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Maneja mensajes de texto con:
     - Agente LangChain (si detecta necesidad de tools)
     - Gemini con contexto (para conversación general)
+    
+    VERSIÓN MEJORADA con mejor logging y manejo de errores
     """
     user = update.effective_user
     user_message = update.message.text
@@ -28,7 +30,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = user.first_name
     chat_id = update.effective_chat.id
     
-    logger.info(f"💬 [{user_name}] {user_message[:100]}")
+    logger.info(f"💬 [{user_name}] {user_message}")
     
     # Verificar servicios disponibles
     if not gemini_client and not intelligent_agent:
@@ -41,26 +43,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Mostrar indicador "escribiendo..."
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         
-        # DECISIÓN: ¿Usar agente o Gemini directo?
+        # DECISIÓN MEJORADA: ¿Usar agente o Gemini directo?
         use_agent = should_use_agent(user_message)
         
         if use_agent and intelligent_agent:
             # ================================
             # USAR AGENTE LANGCHAIN
             # ================================
-            logger.info(f"🤖 Usando AGENTE para: {user_message[:50]}")
+            logger.info(f"🤖 USANDO AGENTE para: {user_message[:50]}")
             
-            response = intelligent_agent.run(user_message)
-            
-            # Guardar en historial
-            conversation_manager.add_message(user_id, 'user', user_message)
-            conversation_manager.add_message(user_id, 'assistant', response)
+            try:
+                response = intelligent_agent.run(user_message)
+                
+                # Verificar si la respuesta es válida
+                if not response or len(response.strip()) < 10:
+                    logger.warning("⚠️ Respuesta del agente muy corta, usando Gemini como fallback")
+                    raise Exception("Respuesta del agente inválida")
+                
+                # Guardar en historial
+                conversation_manager.add_message(user_id, 'user', user_message)
+                conversation_manager.add_message(user_id, 'assistant', response)
+                
+                logger.info(f"✅ Agente respondió exitosamente")
+                
+            except Exception as agent_error:
+                # Fallback a Gemini si el agente falla
+                logger.error(f"❌ Error en agente, usando Gemini: {agent_error}")
+                
+                # Usar Gemini como respaldo
+                conversation_history = conversation_manager.get_history(user_id)
+                response = gemini_client.get_response_with_context(
+                    user_message=user_message,
+                    conversation_history=conversation_history,
+                    user_name=user_name
+                )
+                
+                conversation_manager.add_message(user_id, 'user', user_message)
+                conversation_manager.add_message(user_id, 'assistant', response)
+                
+                # Añadir nota explicativa
+                response += "\n\n_💡 Nota: Respondí con IA general. Para usar herramientas específicas, intenta con comandos como /convertir, /traducir o /letra_"
             
         else:
             # ================================
             # USAR GEMINI CON CONTEXTO
             # ================================
-            logger.info(f"💭 Usando GEMINI para: {user_message[:50]}")
+            logger.info(f"💭 USANDO GEMINI para: {user_message[:50]}")
             
             # Obtener historial de conversación
             conversation_history = conversation_manager.get_history(user_id)
@@ -90,6 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await update.message.reply_text(chunk, parse_mode=ParseMode.MARKDOWN)
                 except Exception:
+                    # Fallback sin Markdown
                     await update.message.reply_text(chunk)
                     
                 if i < len(chunks) - 1:
@@ -98,7 +127,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Intentar con Markdown, fallback a texto plano
             try:
                 await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"⚠️ Error con Markdown, enviando texto plano: {e}")
                 await update.message.reply_text(response)
         
         logger.info(f"✅ Respuesta enviada a {user_name}")
@@ -107,7 +137,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Error al procesar mensaje: {e}", exc_info=True)
         await update.message.reply_text(
             "Disculpa, hubo un problema al procesar tu mensaje. "
-            "¿Podrías intentarlo de nuevo?"
+            "¿Podrías intentarlo de nuevo? Si el problema persiste, "
+            "intenta usar los comandos directos como /convertir, /traducir o /letra"
         )
 
 
@@ -136,7 +167,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📸 **Imagen recibida**\n\n"
         "El análisis de imágenes con Gemini Vision estará disponible próximamente.\n"
-        "Por ahora, describe lo que necesitas en texto. ✏️",
+        "Por ahora, describe lo que necesitas en texto. ✍️",
         parse_mode=ParseMode.MARKDOWN
     )
 
