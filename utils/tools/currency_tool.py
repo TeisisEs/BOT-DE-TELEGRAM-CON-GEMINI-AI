@@ -173,24 +173,116 @@ def convert_currency_function(query: str) -> str:
         Resultado formateado como string
     """
     converter = CurrencyConverter()
-    
+
+    # Mapeos simples de nombres a códigos de moneda para lenguaje natural
+    name_to_code = {
+        'DOLAR': 'USD', 'DOLARES': 'USD', 'DÓLAR': 'USD', 'DÓLARES': 'USD', 'DOLLAR': 'USD', 'DOLLARS': 'USD',
+        'EURO': 'EUR', 'EUROS': 'EUR',
+        'LIBRA': 'GBP', 'LIBRAS': 'GBP', 'POUND': 'GBP', 'POUNDS': 'GBP',
+        'YEN': 'JPY', 'YENS': 'JPY',
+        'PESO': 'MXN', 'PESOS': 'MXN', 'PESO MEXICANO': 'MXN', 'PESOS MEXICANOS': 'MXN',
+        'CNY': 'CNY', 'YUAN': 'CNY', 'RENMINBI': 'CNY',
+        'CAD': 'CAD', 'AUD': 'AUD', 'BRL': 'BRL', 'INR': 'INR', 'KRW': 'KRW', 'CHF': 'CHF'
+    }
+
+    import re
+
     try:
-        # Parsear query (formatos flexibles)
-        query = query.upper().replace('TO', '').replace('CONVERT', '').strip()
-        parts = query.split()
+        q = query.strip()
+
+        # Buscar cantidad: números con punto o coma, puede venir con símbolo $
+        amount_match = re.search(r"([0-9]+(?:[\.,][0-9]+)?)", q)
+        if not amount_match:
+            return "❌ No pude encontrar una cantidad en la consulta. Ejemplo: '100 USD a EUR'"
+        amount_str = amount_match.group(1).replace(',', '.')
+        amount = float(amount_str)
+
+        # Normalizar texto para buscar monedas
+        q_upper = q.upper()
+
+        # Buscar códigos de 3 letras primero (USD, EUR, MXN, etc.)
+        code_matches = re.findall(r"\b([A-Z]{3})\b", q_upper)
+        from_currency = None
+        to_currency = None
+
+        if len(code_matches) >= 2:
+            from_currency, to_currency = code_matches[0], code_matches[1]
+        elif len(code_matches) == 1:
+            # Intentar inferir dirección por palabras clave 'A', 'TO', 'EN'
+            if re.search(r"\bA\b|\bTO\b|\bEN\b", q_upper):
+                # Si aparece 'A' o 'TO', tomar primer código como origen y el resto buscar nombre destino
+                from_currency = code_matches[0]
         
-        # Intentar extraer: amount from_currency to_currency
-        if len(parts) < 3:
-            return "❌ Formato incorrecto. Usa: '100 USD EUR' o '100 USD to EUR'"
-        
-        amount = float(parts[0])
-        from_currency = parts[1]
-        to_currency = parts[2] if len(parts) > 2 else parts[-1]
-        
+        # Si no hay códigos, buscar nombres de moneda en español/inglés
+        if not from_currency or not to_currency:
+            # Buscar patrones 'X a Y' o 'from X to Y' donde X/Y son palabras
+            # Extraer palabras que puedan ser nombres de moneda
+            words = re.findall(r"\b[\wñóáéíú'-]+\b", q_upper)
+            # Intentar localizar la palabra que sigue a la cantidad como posible moneda origen
+            idx = None
+            for i, w in enumerate(words):
+                if amount_match and w == amount_str.upper().replace('.', ','):
+                    idx = i
+                    break
+            # Fallback: buscar primera palabra no numérica cerca del número
+            if idx is None:
+                # encontrar el índice aproximado del número en words
+                for i, w in enumerate(words):
+                    if re.search(r"[0-9]", w):
+                        idx = i
+                        break
+
+            cand_from = None
+            cand_to = None
+            if idx is not None:
+                # palabra siguiente
+                if idx + 1 < len(words):
+                    cand_from = words[idx + 1]
+                # intentar palabra después de 'A' o 'TO'
+                for j in range(idx + 1, min(idx + 6, len(words))):
+                    if words[j] in ('A', 'TO', 'EN') and j + 1 < len(words):
+                        cand_to = words[j + 1]
+                        break
+
+            # Si no encontramos cand_to, intentar tomar la última palabra del query
+            if not cand_to and len(words) >= 1:
+                cand_to = words[-1]
+
+            # Mapear candidatos por nombre
+            def map_name(w):
+                if not w:
+                    return None
+                w = w.upper().strip()
+                # remover puntuación
+                w = re.sub(r"[^A-ZÀ-ÿ]", '', w)
+                return name_to_code.get(w)
+
+            if cand_from:
+                mapped = map_name(cand_from)
+                if mapped:
+                    from_currency = mapped
+            if cand_to:
+                mapped = map_name(cand_to)
+                if mapped:
+                    to_currency = mapped
+
+        # Si aún no hay moneda destino/origen, intentar heurística: buscar dos nombres propios en el texto
+        if not from_currency or not to_currency:
+            # buscar nombres conocidos en el texto
+            for name, code in name_to_code.items():
+                if name in q_upper:
+                    if not from_currency:
+                        from_currency = code
+                    elif not to_currency and code != from_currency:
+                        to_currency = code
+
+        if not from_currency or not to_currency:
+            return "❌ No pude determinar las monedas origen/destino. Usa: '100 USD a EUR' o '/convertir 100 USD EUR'"
+
         # Realizar conversión
         result = converter.convert(amount, from_currency, to_currency)
         return converter.format_result(result)
-        
+
     except ValueError:
         return "❌ Cantidad inválida. Debe ser un número. Ejemplo: '100 USD EUR'"
     except Exception as e:
@@ -205,7 +297,9 @@ currency_tool = Tool(
         "Convierte cantidades entre diferentes monedas usando tasas actualizadas en tiempo real. "
         "Formato de entrada: 'CANTIDAD MONEDA_ORIGEN MONEDA_DESTINO' (ej: '100 USD EUR'). "
         "Soporta códigos de moneda como USD, EUR, GBP, JPY, MXN, CAD, AUD, BRL, INR, etc. "
-        "Útil para conversiones de dinero y tasas de cambio actuales."
+        "También acepta consultas en lenguaje natural en español o inglés, por ejemplo: "
+        "'¿Cuánto son 100 dólares en euros?', 'a cuantos dolares equivale 10000 yenes', 'convert 50 GBP to MXN'. "
+        "Si el usuario indica una cantidad y menciona monedas, utiliza esta herramienta."
     ),
     func=convert_currency_function
 )

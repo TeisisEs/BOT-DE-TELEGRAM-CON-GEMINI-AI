@@ -12,6 +12,7 @@ from utils.conversation_manager import conversation_manager
 
 # IMPORTAR AGENTE LANGCHAIN
 from utils.agent_handler import intelligent_agent, should_use_agent
+from utils.tools import currency_tool, translator_tool
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,58 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # DECISIÓN MEJORADA: ¿Usar agente o Gemini directo?
         use_agent = should_use_agent(user_message)
-        
+
+        # Heurística rápida: si la consulta claramente pide conversión o traducción,
+        # invocar directamente la tool correspondiente para mayor confiabilidad.
+        import re
+        lower = user_message.lower()
+
+        # Detectar conversiones: número + palabra de moneda o código
+        number_present = bool(re.search(r"\b[0-9]+(?:[\.,][0-9]+)?\b", user_message))
+        currency_words = ['dolar', 'dólar', 'dolares', 'dólares', 'euro', 'euros', 'peso', 'pesos', 'yen', 'yene', 'libra',
+                          'usd', 'eur', 'mxn', 'jpy', 'gbp', 'cad', 'aud', 'brl', 'inr']
+        has_currency_word = any(w in lower for w in currency_words)
+
+        # Detectar traducciones: palabras clave típicas
+        translation_words = ['traducir', 'traduce', 'translate', 'cómo se dice', 'how to say', 'en español', 'al español', 'to english', 'al inglés', 'en ingles']
+        has_translation = any(w in lower for w in translation_words)
+
+        # Si detectamos conversión de monedas de forma explícita, usar la tool directamente
+        if number_present and has_currency_word:
+            try:
+                logger.info(f"🔧 Llamando directamente a CurrencyTool para: {user_message}")
+                tool_result = currency_tool.func(user_message)
+                # Guardar en historial
+                conversation_manager.add_message(user_id, 'user', user_message)
+                conversation_manager.add_message(user_id, 'assistant', tool_result)
+                response = tool_result
+                # Enviar respuesta y saltar el flujo del agente
+                try:
+                    await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+                except Exception:
+                    await update.message.reply_text(response)
+                logger.info("✅ CurrencyTool respondió directamente")
+                return
+            except Exception as e:
+                logger.error(f"❌ Error al usar CurrencyTool directamente: {e}")
+
+        # Si detectamos una petición de traducción explícita, usar la tool directamente
+        if has_translation:
+            try:
+                logger.info(f"🔧 Llamando directamente a TranslatorTool para: {user_message}")
+                tool_result = translator_tool.func(user_message)
+                conversation_manager.add_message(user_id, 'user', user_message)
+                conversation_manager.add_message(user_id, 'assistant', tool_result)
+                response = tool_result
+                try:
+                    await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
+                except Exception:
+                    await update.message.reply_text(response)
+                logger.info("✅ TranslatorTool respondió directamente")
+                return
+            except Exception as e:
+                logger.error(f"❌ Error al usar TranslatorTool directamente: {e}")
+
         if use_agent and intelligent_agent:
             # ================================
             # USAR AGENTE LANGCHAIN

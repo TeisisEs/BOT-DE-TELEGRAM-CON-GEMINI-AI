@@ -1,4 +1,5 @@
 import logging
+import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -25,15 +26,28 @@ from handlers.messages import (
     handle_sticker
 )
 
+# Detectar si estamos en producción (Render) o desarrollo
+IS_PRODUCTION = os.getenv('RENDER') is not None
+
 # Configurar logging mejorado
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('bot.log', encoding='utf-8')
-    ]
-)
+if IS_PRODUCTION:
+    # En producción: solo consola (Render captura estos logs)
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        handlers=[logging.StreamHandler()]
+    )
+else:
+    # En desarrollo: consola + archivo
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('bot.log', encoding='utf-8')
+        ]
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,8 +79,11 @@ def main():
     """
     Función principal que inicia el bot con configuración mejorada
     """
+    env_status = "🌐 PRODUCCIÓN (Render)" if IS_PRODUCTION else "💻 DESARROLLO (Local)"
+    
     print("\n" + "="*60)
     print("🚀 INICIANDO BOT DE TELEGRAM CON LANGCHAIN AGENT")
+    print(f"   Entorno: {env_status}")
     print("="*60)
     
     print("\n📋 Cargando módulos...")
@@ -158,9 +175,13 @@ def main():
     print("   ✓ Memoria conversacional (30 min)")
     print("   ✓ Sistema de decisión inteligente")
     
-    print("\n👋 Abre Telegram y prueba tu bot")
-    print("💡 Prueba tanto comandos como preguntas naturales")
-    print("ℹ️  Presiona Ctrl+C para detener\n")
+    if IS_PRODUCTION:
+        print("\n🌐 Bot desplegado en Render - Funcionando 24/7")
+        logger.info("Bot ejecutándose en producción (Render)")
+    else:
+        print("\n👋 Abre Telegram y prueba tu bot")
+        print("💡 Prueba tanto comandos como preguntas naturales")
+        print("ℹ️  Presiona Ctrl+C para detener\n")
     
     logger.info("Bot con LangChain Agent iniciado correctamente")
     

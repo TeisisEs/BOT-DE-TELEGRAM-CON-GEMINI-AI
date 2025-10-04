@@ -22,11 +22,7 @@ credentials.json
 
 #Archivos Privados
 .env
-GUIA_DEFENSA.md 
-GUIA_DEFENSA.pdf
-PASOS_IMPLEMENTACION.pdf 
-test_agente.py
-test_agent_2.py
+scripts/
 
 # Directorios de build / empaquetado
 build/

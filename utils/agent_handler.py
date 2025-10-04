@@ -55,6 +55,12 @@ EJEMPLOS DE CUÁNDO USAR HERRAMIENTAS:
 - "letra de Bohemian Rhapsody" → Usa LyricsFinder
 - "busca la letra de Hey Jude" → Usa LyricsFinder
 
+TRIGGERS DE LENGUAJE NATURAL (usa las tools cuando detectes cualquiera de estos ejemplos):
+- Frases de conversión en español: "¿Cuánto son 100 dólares en euros?", "a cuantos dolares equivale 10000 yenes", "cuantos dolares son 5000 pesos mexicanos"
+- Frases de conversión en inglés: "how much is 100 USD in EUR", "convert 50 GBP to MXN"
+- Frases de traducción en español: "traduce 'how are you' al español", "cómo se dice 'buenos días' en inglés"
+- Frases de traducción en inglés: "translate 'buenos días' to english", "how to say 'gracias' in english"
+
 Usa EXACTAMENTE este formato:
 
 Question: la pregunta del usuario
