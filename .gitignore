@@ -25,6 +25,8 @@ credentials.json
 GUIA_DEFENSA.md 
 GUIA_DEFENSA.pdf
 PASOS_IMPLEMENTACION.pdf 
+test_agente.py
+test_agent_2.py
 
 # Directorios de build / empaquetado
 build/
