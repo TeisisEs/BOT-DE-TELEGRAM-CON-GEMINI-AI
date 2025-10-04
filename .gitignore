@@ -1,74 +1,67 @@
-.env
-__pycache__/
-*.pyc
+# Entorno virtuales (ajusta el nombre si lo tienes distinto)
 bot_env/
-.DS_Store
-*.log
-bot.log
-.gitignore
-#____________________________________
-
-
-# Variables de entorno - ¡NUNCA SUBIR!
-.env
-.env.local
-.env.*.local
-
-# Virtual Environment
 venv/
-env/
-ENV/
-.venv
+.env/
+.env.* 
 
-#archivos de exposicion
-GUIA_DEFENSA.md
-GUIA_DEFENSA.pdf
-PASOS_IMPLEMENTACION.pdf
-#____________________________________
-# Python
+# Python cache / compilados
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Logs
-*.log
+# Logs y archivos runtime
 bot.log
-logs/
+*.log
+bot.log.*
 
-# IDEs
+
+# Archivos de configuración con secretos (trackea .example en su lugar)
+config.py
+secrets.*
+credentials.json
+
+#Archivos Privados
+.env
+GUIA_DEFENSA.md 
+GUIA_DEFENSA.pdf
+PASOS_IMPLEMENTACION.pdf 
+
+# Directorios de build / empaquetado
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# Tests / cobertura
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# IDE / OS
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
+*.sublime-workspace
+*.sublime-project
 .DS_Store
+Thumbs.db
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# Caches y metadata de paquetes
+pip-wheel-metadata/
+*.egg-info/
+__pypackages__/
+*.manifest
 
-# Jupyter Notebooks
-.ipynb_checkpoints
-
-# Mypy
+# Mypy, pipenv, poetry, black, isort, etc.
 .mypy_cache/
-.dmypy.json
-dmypy.json
+.cache/
+poetry.lock
+Pipfile.lock
+
+
+# Node (por si acaso hay frontend)
+node_modules/
+
+# Otros
+*.sqlite3

@@ -1,14 +1,24 @@
-telegram_bot_kodigo/
-├── .env.example           # Secretos (NO subir a tu GitHub)
-├── .gitignore             # Qué ignorar en GitHub
-├── bot.py                 #  Archivo principal
-├── config.py              #  Configuraciones
-├── requirements.txt       #  Lista de dependencias
-├── README.md             #  Documentación
-├── handlers/             #  Manejadores del bot
-│   ├── __init__.py
-│   ├── commands.py       # Comandos como /start, /help
-│   └── messages.py       # Respuestas a mensajes normales
-└── utils/                #  Utilidades
-    ├── __init__.py
-    └── gemini_client.py  # Cliente de Gemini AI
+##  **Arquitectura del Proyecto**
+
+```
+telegram_bot_proyecto/
+│
+├── 📄 bot.py                    # Archivo principal
+├── 📄 config.py                 # Configuración
+├── 📄 requirements.txt          # Dependencias
+│
+├── 📁 handlers/
+│   ├── commands.py              # Comandos del bot
+│   └── messages.py              # Manejo de mensajes
+│
+└── 📁 utils/
+    ├── gemini_client.py         # Cliente Gemini AI
+    ├── weather_api.py           # API del clima
+    ├── conversation_manager.py  # Gestión de conversaciones
+    ├── agent_handler.py         #  LangChain Agent
+    │
+    └── 📁 tools/                # LangChain Tools
+        ├── currency_tool.py     # Conversor de monedas
+        ├── translator_tool.py   # Traductor
+        └── lyrics_tool.py       # Buscador de letras
+```

@@ -8,13 +8,14 @@ logger = logging.getLogger(__name__)
 
 class Translator:
     """
-    Traductor usando API gratuita de LibreTranslate
-    API: libretranslate.com (gratuita, sin key necesaria)
+    Traductor usando MyMemory Translation API
+    API: mymemory.translated.net (gratuita, sin key necesaria)
+    Límite: 1000 caracteres por request, 5000 requests/día
     """
     
     def __init__(self):
-        # API pública gratuita
-        self.base_url = "https://libretranslate.com/translate"
+        # API pública gratuita más estable
+        self.base_url = "https://api.mymemory.translated.net/get"
         
         # Códigos de idiomas soportados
         self.languages = {
@@ -38,11 +39,6 @@ class Translator:
             'fi': 'Suomi',
             'no': 'Norsk',
             'cs': 'Čeština',
-            'el': 'Ελληνικά',
-            'he': 'עברית',
-            'th': 'ไทย',
-            'vi': 'Tiếng Việt',
-            'id': 'Bahasa Indonesia'
         }
         
         # Emojis de banderas por idioma
@@ -53,7 +49,7 @@ class Translator:
             'nl': '🇳🇱', 'pl': '🇵🇱', 'tr': '🇹🇷'
         }
         
-        logger.info("✅ Translator inicializado")
+        logger.info("✅ Translator inicializado (MyMemory API)")
     
     
     def translate(self, text: str, source_lang: str = 'auto', target_lang: str = 'es') -> dict:
@@ -74,36 +70,46 @@ class Translator:
             target_lang = target_lang.lower().strip()
             
             # Validar longitud del texto
-            if len(text) > 5000:
-                return {'error': 'Texto demasiado largo. Máximo 5000 caracteres.'}
+            if len(text) > 1000:
+                return {'error': 'Texto demasiado largo. Máximo 1000 caracteres.'}
             
             if not text.strip():
                 return {'error': 'El texto está vacío.'}
             
-            logger.info(f"🌍 Traduciendo de '{source_lang}' a '{target_lang}'")
+            # Si es auto, intentar detectar idioma básico
+            if source_lang == 'auto':
+                # Detección simple: si tiene caracteres latinos españoles, es español
+                tiene_espanol = any(c in text.lower() for c in ['á', 'é', 'í', 'ó', 'ú', 'ñ', '¿', '¡'])
+                palabras_espanol = ['hola', 'buenos', 'gracias', 'por', 'favor', 'que', 'como']
+                es_espanol = tiene_espanol or any(palabra in text.lower() for palabra in palabras_espanol)
+                
+                source_lang = 'es' if es_espanol else 'en'
             
-            # Preparar payload
-            payload = {
+            logger.info(f"🌐 Traduciendo de '{source_lang}' a '{target_lang}'")
+            
+            # Preparar parámetros para MyMemory API
+            params = {
                 'q': text,
-                'source': source_lang,
-                'target': target_lang,
-                'format': 'text'
+                'langpair': f"{source_lang}|{target_lang}"
             }
             
             # Hacer request a la API
-            response = requests.post(
+            response = requests.get(
                 self.base_url,
-                data=payload,
-                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                params=params,
                 timeout=15
             )
             response.raise_for_status()
             
             data = response.json()
             
-            # Extraer traducción
-            if 'translatedText' in data:
-                translated_text = data['translatedText']
+            # Verificar respuesta
+            if data.get('responseStatus') == 200 or 'responseData' in data:
+                translated_text = data['responseData']['translatedText']
+                
+                # Verificar que no sea el mismo texto (traducción fallida)
+                if translated_text.lower() == text.lower():
+                    return {'error': 'No se pudo traducir. Verifica los idiomas.'}
                 
                 result = {
                     'original': text,
@@ -119,17 +125,16 @@ class Translator:
                 logger.info(f"✅ Traducción exitosa: {len(text)} → {len(translated_text)} caracteres")
                 return result
             else:
-                return {'error': 'No se pudo traducir el texto'}
+                error_msg = data.get('responseDetails', 'Error desconocido')
+                return {'error': f'Error de traducción: {error_msg}'}
                 
         except requests.exceptions.HTTPError as e:
             logger.error(f"❌ Error HTTP en traducción: {e}")
-            if response.status_code == 400:
-                return {'error': 'Idioma no soportado o formato incorrecto'}
             return {'error': f'Error del servidor: {response.status_code}'}
             
         except requests.exceptions.Timeout:
             logger.error("❌ Timeout en API de traducción")
-            return {'error': 'Tiempo de espera agotado. El texto puede ser muy largo.'}
+            return {'error': 'Tiempo de espera agotado. Intenta con texto más corto.'}
             
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Error de conexión: {e}")
@@ -159,7 +164,7 @@ class Translator:
             original_preview = original_preview[:200] + '...'
         
         message = f"""
-🌍 **TRADUCCIÓN**
+🌐 **TRADUCCIÓN**
 
 {result['source_flag']} **{result['source_name']}:**
 _{original_preview}_
@@ -167,7 +172,7 @@ _{original_preview}_
 {result['target_flag']} **{result['target_name']}:**
 **{result['translated']}**
 
-_Traducción automática - LibreTranslate_
+_Traducción automática - MyMemory_
         """
         
         return message.strip()
@@ -183,11 +188,12 @@ _Traducción automática - LibreTranslate_
         ])
         
         message = f"""
-🌍 **IDIOMAS SOPORTADOS**
+🌐 **IDIOMAS SOPORTADOS**
 
 {langs_list}
 
 **Uso:** Usa los códigos (ej: 'en', 'es', 'fr')
+**Límite:** 1000 caracteres por traducción
         """
         
         return message.strip()
@@ -203,8 +209,8 @@ def translate_text_function(query: str) -> str:
     
     Formatos aceptados:
     - "translate 'hello' to spanish"
-    - "en es hello world"
     - "traducir 'how are you' al español"
+    - "hello world en español"
     
     Args:
         query: String con la consulta de traducción
@@ -220,20 +226,20 @@ def translate_text_function(query: str) -> str:
         
         # Detectar idioma destino
         target_lang = 'es'  # Default español
-        if 'to english' in query_lower or 'al inglés' in query_lower or 'to en' in query_lower:
+        if 'to english' in query_lower or 'al inglés' in query_lower or 'in english' in query_lower:
             target_lang = 'en'
-        elif 'to spanish' in query_lower or 'al español' in query_lower or 'to es' in query_lower:
+        elif 'to spanish' in query_lower or 'al español' in query_lower or 'en español' in query_lower:
             target_lang = 'es'
-        elif 'to french' in query_lower or 'al francés' in query_lower or 'to fr' in query_lower:
+        elif 'to french' in query_lower or 'al francés' in query_lower or 'en francés' in query_lower:
             target_lang = 'fr'
-        elif 'to german' in query_lower or 'al alemán' in query_lower or 'to de' in query_lower:
+        elif 'to german' in query_lower or 'al alemán' in query_lower or 'en alemán' in query_lower:
             target_lang = 'de'
-        elif 'to portuguese' in query_lower or 'al portugués' in query_lower or 'to pt' in query_lower:
+        elif 'to portuguese' in query_lower or 'al portugués' in query_lower:
             target_lang = 'pt'
-        elif 'to italian' in query_lower or 'al italiano' in query_lower or 'to it' in query_lower:
+        elif 'to italian' in query_lower or 'al italiano' in query_lower:
             target_lang = 'it'
         
-        # Extraer el texto a traducir (entre comillas o todo)
+        # Extraer el texto a traducir
         text_to_translate = query
         
         # Intentar extraer texto entre comillas
@@ -246,14 +252,16 @@ def translate_text_function(query: str) -> str:
             if len(parts) >= 2:
                 text_to_translate = parts[1]
         else:
-            # Remover palabras clave para obtener texto
+            # Remover palabras clave comunes
+            keywords = ['translate', 'traducir', 'traduce', 'to', 'al', 'en', 'in', 
+                       'english', 'spanish', 'español', 'inglés', 'french', 'francés']
             text_to_translate = query
-            for keyword in ['translate', 'traducir', 'to', 'al', 'en', 'es', 'fr', 'de', 'pt', 'it']:
+            for keyword in keywords:
                 text_to_translate = text_to_translate.replace(keyword, '')
             text_to_translate = text_to_translate.strip()
         
-        if not text_to_translate or len(text_to_translate) < 1:
-            return "❌ No se encontró texto para traducir. Usa formato: 'translate \"hello\" to spanish'"
+        if not text_to_translate or len(text_to_translate) < 2:
+            return "❌ No se encontró texto para traducir. Ejemplo: 'translate \"hello\" to spanish'"
         
         # Realizar traducción
         result = translator.translate(text_to_translate, 'auto', target_lang)
@@ -268,11 +276,11 @@ def translate_text_function(query: str) -> str:
 translator_tool = Tool(
     name="TextTranslator",
     description=(
-        "Traduce texto entre diferentes idiomas. "
-        "Formato: 'translate \"texto\" to [language]' o simplemente el texto con idioma destino. "
-        "Idiomas soportados: español (es), inglés (en), francés (fr), alemán (de), italiano (it), "
-        "portugués (pt), ruso (ru), chino (zh), japonés (ja), coreano (ko), árabe (ar), hindi (hi), etc. "
-        "Detecta automáticamente el idioma origen. "
+        "Traduce texto entre diferentes idiomas usando detección automática. "
+        "Formato: 'translate \"texto\" to [language]' o 'texto en [idioma]'. "
+        "Idiomas soportados: español (es), inglés (en), francés (fr), alemán (de), "
+        "italiano (it), portugués (pt), y más. "
+        "Detecta automáticamente el idioma origen. Máximo 1000 caracteres. "
         "Útil para comunicación multilingüe y comprensión de textos en otros idiomas."
     ),
     func=translate_text_function

@@ -1,5 +1,5 @@
 """
-LangChain Agent Handler - VERSIÓN CORREGIDA
+LangChain Agent Handler - VERSIÓN MEJORADA
 ===========================================
 Agente inteligente que decide automáticamente qué tool usar
 """
@@ -7,7 +7,7 @@ Agente inteligente que decide automáticamente qué tool usar
 import logging
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
 from langchain import hub
 
 from config import GEMINI_API_KEY
@@ -34,38 +34,38 @@ class IntelligentAgent:
                 convert_system_message_to_human=True
             )
             
-            # Obtener prompt de ReAct desde hub
-            try:
-                prompt = hub.pull("hwchase17/react")
-            except Exception as e:
-                logger.warning(f"No se pudo cargar prompt del hub: {e}")
-                # Crear prompt simple manualmente
-                from langchain.prompts import PromptTemplate
-                
-                template = """Answer the following questions as best you can. You have access to the following tools:
+            # Crear prompt personalizado más robusto
+            template = """Eres un asistente útil que tiene acceso a las siguientes herramientas:
 
 {tools}
 
-Use the following format:
+Usa el siguiente formato:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Question: la pregunta que debes responder
+Thought: siempre debes pensar qué hacer
+Action: la acción a tomar, debe ser una de [{tool_names}]
+Action Input: la entrada para la acción
+Observation: el resultado de la acción
+... (este proceso Thought/Action/Action Input/Observation puede repetirse N veces)
+Thought: ahora sé la respuesta final
+Final Answer: la respuesta final a la pregunta original
+
+IMPORTANTE:
+- Si la pregunta requiere convertir monedas, usa CurrencyConverter
+- Si requiere traducción, usa TextTranslator
+- Si requiere letra de canción, usa LyricsFinder
+- Responde en español de forma clara y amigable
+- Si no necesitas herramientas, responde directamente
 
 Begin!
 
 Question: {input}
 Thought:{agent_scratchpad}"""
-                
-                prompt = PromptTemplate(
-                    input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
-                    template=template
-                )
+            
+            prompt = PromptTemplate(
+                input_variables=["input", "agent_scratchpad", "tools", "tool_names"],
+                template=template
+            )
             
             # Crear agente con create_react_agent
             agent = create_react_agent(
@@ -74,17 +74,18 @@ Thought:{agent_scratchpad}"""
                 prompt=prompt
             )
             
-            # Crear AgentExecutor
+            # Crear AgentExecutor con configuración optimizada
             self.agent = AgentExecutor(
                 agent=agent,
                 tools=all_tools,
                 verbose=True,
                 handle_parsing_errors=True,
-                max_iterations=3,
-                early_stopping_method="generate"
+                max_iterations=5,  # Aumentado para mayor flexibilidad
+                early_stopping_method="generate",
+                return_intermediate_steps=False  # Para respuestas más limpias
             )
             
-            logger.info("✅ Agente LangChain inicializado con 3 tools")
+            logger.info("✅ Agente LangChain inicializado correctamente con 3 tools")
             
         except Exception as e:
             logger.error(f"❌ Error al inicializar agente: {e}")
@@ -113,6 +114,9 @@ Thought:{agent_scratchpad}"""
             else:
                 answer = str(response)
             
+            # Limpiar respuesta de artefactos del agente
+            answer = self._clean_response(answer)
+            
             logger.info(f"✅ Agente respondió: {answer[:100]}...")
             return answer
             
@@ -122,6 +126,21 @@ Thought:{agent_scratchpad}"""
                 "Disculpa, tuve un problema al procesar tu solicitud. "
                 "¿Podrías reformular tu pregunta?"
             )
+    
+    
+    def _clean_response(self, response: str) -> str:
+        """
+        Limpia la respuesta del agente de artefactos internos
+        """
+        # Remover posibles artefactos del proceso ReAct
+        artifacts = ["Thought:", "Action:", "Action Input:", "Observation:", "Final Answer:"]
+        
+        for artifact in artifacts:
+            if artifact in response:
+                # Tomar solo la parte después del último artifact
+                response = response.split(artifact)[-1].strip()
+        
+        return response
 
 
 # ==================================================
@@ -145,15 +164,17 @@ def should_use_agent(query: str) -> bool:
         # Currency
         'convertir', 'conversion', 'conversor', 'moneda', 'dolar', 'euro', 'peso',
         'usd', 'eur', 'gbp', 'mxn', 'currency', 'convert', 'cuanto es', 'cuánto es',
+        'cambio', 'divisa', 'cotizacion', 'cotización',
         
         # Translator
         'traducir', 'traducción', 'traductor', 'translate', 'translation',
         'en ingles', 'en español', 'al ingles', 'al español', 'en frances',
-        'cómo se dice', 'como se dice', 'traduce',
+        'cómo se dice', 'como se dice', 'traduce', 'en inglés',
         
         # Lyrics
         'letra', 'letras', 'cancion', 'canción', 'song', 'lyrics', 'lyric',
-        'musica', 'música', 'artista', 'banda', 'busca letra', 'quiero letra'
+        'musica', 'música', 'artista', 'banda', 'busca letra', 'quiero letra',
+        'tema de', 'tema musical'
     ]
     
     return any(keyword in query_lower for keyword in agent_keywords)
@@ -162,7 +183,7 @@ def should_use_agent(query: str) -> bool:
 # Crear instancia global
 try:
     intelligent_agent = IntelligentAgent()
-    logger.info("🎯 Agente inteligente listo")
+    logger.info("🎯 Agente inteligente listo para usar")
 except Exception as e:
     logger.error(f"❌ No se pudo inicializar el agente: {e}")
     intelligent_agent = None
@@ -176,8 +197,18 @@ if __name__ == "__main__":
         print("=" * 60)
         
         # Test 1: Currency conversion
-        print("\n📝 Test 1: Conversión de monedas")
+        print("\n📊 Test 1: Conversión de monedas")
         response = intelligent_agent.run("convierte 100 dólares a euros")
+        print(f"Respuesta: {response}\n")
+        
+        # Test 2: Translation
+        print("📊 Test 2: Traducción")
+        response = intelligent_agent.run("traduce 'hello world' al español")
+        print(f"Respuesta: {response}\n")
+        
+        # Test 3: Lyrics (si la API responde)
+        print("📊 Test 3: Letra de canción")
+        response = intelligent_agent.run("letra de Hey Jude de The Beatles")
         print(f"Respuesta: {response[:200]}...\n")
         
         print("=" * 60)
