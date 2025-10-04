@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -189,9 +191,26 @@ def main():
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
+# ==============================
+# SERVIDOR FLASK PARA RENDER
+# ==============================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 Bot de Telegram con LangChain está corriendo en Render (plan Free)."
+
+# ==============================
 if __name__ == '__main__':
     try:
-        main()
+        # Hilo para ejecutar el bot en paralelo
+        bot_thread = threading.Thread(target=main, daemon=True)
+        bot_thread.start()
+
+        # Flask mantiene el servicio “vivo” para Render
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host="0.0.0.0", port=port)
+
     except KeyboardInterrupt:
         print("\n\n🛑 Bot detenido por el usuario")
         logger.info("Bot detenido manualmente")
