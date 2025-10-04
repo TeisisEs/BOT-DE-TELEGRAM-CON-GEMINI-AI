@@ -4,9 +4,9 @@ Bot inteligente de Telegram que integra **Google Gemini AI**, **LangChain Framew
 
 ---
 
-## 🎯 **Características Principales**
+##  **Características Principales**
 
-### **🧠 Inteligencia Artificial**
+### ** Inteligencia Artificial**
 - ✅ Conversaciones naturales con **Google Gemini AI**
 - ✅ **LangChain Agent** que decide automáticamente qué herramienta usar
 - ✅ Memoria conversacional por usuario (30 minutos)
@@ -16,7 +16,7 @@ Bot inteligente de Telegram que integra **Google Gemini AI**, **LangChain Framew
 2. **🌐 TextTranslator** - Traducción automática entre idiomas
 3. **🎵 LyricsFinder** - Búsqueda de letras de canciones
 
-### **⚡ Funcionalidades**
+### ** Funcionalidades**
 - 📅 Fecha y hora actual
 - 🌤️ Información meteorológica (OpenWeatherMap)
 - 😂 Generación de chistes con IA
@@ -25,7 +25,7 @@ Bot inteligente de Telegram que integra **Google Gemini AI**, **LangChain Framew
 
 ---
 
-## 📋 **Requisitos**
+##  **Requisitos**
 
 - Python 3.10+
 - Cuenta de Telegram
