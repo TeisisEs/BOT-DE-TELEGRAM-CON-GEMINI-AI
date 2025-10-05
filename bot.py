@@ -1,6 +1,6 @@
 import logging
 import os
-import threading
+import asyncio
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -54,6 +54,20 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================
+# SERVIDOR FLASK PARA RENDER
+# ============================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 Bot de Telegram con LangChain está corriendo en Render."
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+
+# ============================================
 # MANEJADOR DE ERRORES
 # ============================================
 
@@ -74,12 +88,12 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PARA EJECUTAR BOT EN ASYNCIO
 # ============================================
 
-def main():
+async def run_bot():
     """
-    Función principal que inicia el bot con configuración mejorada
+    Función asíncrona para ejecutar el bot de Telegram
     """
     env_status = "🌐 PRODUCCIÓN (Render)" if IS_PRODUCTION else "💻 DESARROLLO (Local)"
     
@@ -160,23 +174,6 @@ def main():
     print("   /traducir    - 🌐 Traducir textos")
     print("   /letra       - 🎵 Buscar letras de canciones")
     
-    print("\n🤖 Características del Agente:")
-    print("   ✓ Detecta automáticamente necesidad de tools")
-    print("   ✓ Decide qué herramienta usar")
-    print("   ✓ Conversación natural sin comandos")
-    print("   ✓ Ejemplos:")
-    print("     • 'convierte 100 dólares a euros'")
-    print("     • 'traduce hello world al español'")
-    print("     • 'letra de Bohemian Rhapsody'")
-    
-    print("\n💡 Tecnologías implementadas:")
-    print("   ✓ LangChain Framework")
-    print("   ✓ Google Gemini AI (gemini-2.0-flash-exp)")
-    print("   ✓ LangChain Tools (3 personalizadas)")
-    print("   ✓ LangChain Agent (CONVERSATIONAL_REACT)")
-    print("   ✓ Memoria conversacional (30 min)")
-    print("   ✓ Sistema de decisión inteligente")
-    
     if IS_PRODUCTION:
         print("\n🌐 Bot desplegado en Render - Funcionando 24/7")
         logger.info("Bot ejecutándose en producción (Render)")
@@ -187,30 +184,57 @@ def main():
     
     logger.info("Bot con LangChain Agent iniciado correctamente")
     
-    # Iniciar polling
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Iniciar el bot con polling
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    
+    # Mantener el bot corriendo
+    logger.info("Bot está corriendo y esperando mensajes...")
+    
+    # Crear un evento para mantener el bot corriendo
+    stop_event = asyncio.Event()
+    await stop_event.wait()
+
+
+def run_bot_in_thread():
+    """
+    Ejecuta el bot en un thread con su propio event loop
+    """
+    # Crear un nuevo event loop para este thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Ejecutar el bot
+        loop.run_until_complete(run_bot())
+    except Exception as e:
+        logger.error(f"Error en el bot thread: {e}")
+    finally:
+        loop.close()
 
 
 # ==============================
-# SERVIDOR FLASK PARA RENDER
-# ==============================
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "🤖 Bot de Telegram con LangChain está corriendo en Render (plan Free)."
-
+# MAIN
 # ==============================
 if __name__ == '__main__':
+    import threading
+    
     try:
-        # Hilo para ejecutar el bot en paralelo
-        bot_thread = threading.Thread(target=main, daemon=True)
+        # Crear y ejecutar el thread del bot
+        bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
         bot_thread.start()
-
-        # Flask mantiene el servicio “vivo” para Render
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port)
-
+        
+        # Ejecutar Flask en el thread principal
+        port = int(os.environ.get("PORT", 10000))
+        
+        if IS_PRODUCTION:
+            # En producción, usar configuración más robusta
+            app.run(host="0.0.0.0", port=port, debug=False)
+        else:
+            # En desarrollo
+            app.run(host="0.0.0.0", port=port, debug=True)
+            
     except KeyboardInterrupt:
         print("\n\n🛑 Bot detenido por el usuario")
         logger.info("Bot detenido manualmente")
